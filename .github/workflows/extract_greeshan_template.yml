@@ -1,71 +1,96 @@
-name: Extract Greeshan ROM Structure & Scripts
+name: Build & Release Greeshan Flasher Template
 
 on:
   workflow_dispatch:
     inputs:
       rom_url:
-        description: 'SourceForge Direct/Download Link'
+        description: 'Greeshan SourceForge Download Link'
         required: true
         default: 'https://sourceforge.net/projects/miui-greeshan-repack/files/HyperOS2/Redmi-13C-air/greeshan.by_Redmi13C_5G_air_OS2.0.208.0.VGQINXM_15.0_99c03.zip/download'
+      tag_name:
+        description: 'Release Tag Name'
+        required: true
+        default: 'v1.0-flasher-template'
+
+permissions:
+  contents: write
 
 jobs:
-  extract-template:
+  build-and-release:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Install Required Tools (aria2, p7zip, tree)
+      - name: Install Required Tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y aria2 p7zip-full tree
+          sudo apt-get install -y aria2 p7zip-full tree zip
 
       - name: Download Greeshan ROM from SourceForge
         run: |
-          echo "Downloading ROM using aria2c multi-connection..."
-          aria2c -x 16 -s 16 -k 1M --allow-overwrite=true --follow-metalink=mem -o greeshan_rom.zip "${{ github.event.inputs.rom_url }}"
-          ls -lh greeshan_rom.zip
+          echo "Downloading Greeshan ROM..."
+          aria2c -x 16 -s 16 -k 1M --allow-overwrite=true --follow-metalink=mem -o greeshan.zip "\${{ github.event.inputs.rom_url }}"
 
-      - name: Print Exact Full File Structure of Greeshan ROM
+      - name: Extract & Build HyperOS4_Port_By_Yash Template
         run: |
-          echo "===================================================="
-          echo "          EXACT GREESHAN ZIP FILE STRUCTURE         "
-          echo "===================================================="
-          7z l greeshan_rom.zip > FULL_ROM_STRUCTURE.txt
-          cat FULL_ROM_STRUCTURE.txt
-
-      - name: Extract Scripts, Binaries & META-INF (Skip Heavy .img/.bin)
-        run: |
-          mkdir -p Greeshan_Template
-          # Extract everything EXCEPT heavy firmware-update/images .img and .bin files
-          7z x greeshan_rom.zip -oGreeshan_Template -xr!*.img -xr!*.bin -xr!*.br -xr!*.dat
+          mkdir -p HyperOS4_Port_By_Yash
           
-          # Create empty placeholder folders & list of images so structure stays 100% identical
-          mkdir -p Greeshan_Template/firmware-update
-          7z l greeshan_rom.zip firmware-update/ images/ > Greeshan_Template/IMAGE_FILES_LIST.txt || true
-          cp FULL_ROM_STRUCTURE.txt Greeshan_Template/
-
-      - name: Print Every Single Script Code in Logs
-        run: |
-          cd Greeshan_Template
-          echo "===================================================="
-          echo "              DIRECTORY TREE VIEW                   "
-          echo "===================================================="
-          tree -a
+          # Extract everything EXCEPT super.img (keeps boot.img, dtbo.img, vbmeta, bin, META-INF, scripts!)
+          7z x greeshan.zip -oHyperOS4_Port_By_Yash -xr!super.img -xr!*.br -xr!*.dat
           
-          for file in $(find . -maxdepth 3 -type f \( -name "*.bat" -o -name "*.sh" -o -name "update-binary" -o -name "updater-script" \)); do
-            echo ""
-            echo "####################################################"
-            echo "FILE: $file"
-            echo "####################################################"
-            cat "$file"
-            echo ""
-          done
+          # Delete original zip to free disk space
+          rm -f greeshan.zip
 
-      - name: Upload Clean Template & Scripts as Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Greeshan_Air_Flasher_Template
-          path: Greeshan_Template/
-          retention-days: 30
+      - name: Generate Release Notes with Exact Tree & Script Codes
+        run: |
+          cat << 'EOF' > RELEASE_NOTES.md
+          # 🚀 HyperOS 4 Port Template (Greeshan Exact Structure)
+          **Ready-to-use Hybrid Flasher Template (`Fastboot` + `Recovery`).**
+          Bas is zip ke `images/` (ya `firmware-update/`) folder me apna **`super.img`** daalo aur flash karo!
+
+          ## 📁 Exact Folder Structure
+```text
+EOF
+
+tree -a HyperOS4_Port_By_Yash >> RELEASE_NOTES.md
+echo '```' >> RELEASE_NOTES.md
+echo "" >> RELEASE_NOTES.md
+echo "## 📜 Exact Flasher & Updater Scripts Code" >> RELEASE_NOTES.md
+
+# Append every script's exact code into Release Notes AND copy individual scripts for direct release upload
+mkdir -p release_assets
+cd HyperOS4_Port_By_Yash
+
+for f in $(find . -maxdepth 4 -type f \( -name "*.bat" -o -name "*.sh" -o -name "update-binary" -o -name "updater-script" \)); do
+  clean_name=$(basename "$f")
+  cp "$f" "../release_assets/$clean_name"
+  
+  echo "<details><summary><b>📄 $f (Click to view code)</b></summary>" >> ../RELEASE_NOTES.md
+  echo "" >> ../RELEASE_NOTES.md
+  echo '```sh' >> ../RELEASE_NOTES.md
+  cat "\$f" >> ../RELEASE_NOTES.md
+  echo "" >> ../RELEASE_NOTES.md
+  echo '```' >> ../RELEASE_NOTES.md
+  echo "</details>" >> ../RELEASE_NOTES.md
+  echo "" >> ../RELEASE_NOTES.md
+done
+
+- name: Pack Complete Flasher Template Zip (Without super.img)
+run: |
+cd HyperOS4_Port_By_Yash
+zip -r -0 ../release_assets/HyperOS4_Port_By_Yash_Flasher_Template.zip ./*
+
+- name: Upload Everything Directly to GitHub Releases
+uses: softprops/action-gh-release@v2
+with:
+tag_name: ${{ github.event.inputs.tag_name }}
+name: "HyperOS 4 Port Flasher Template & Scripts (${{ github.event.inputs.tag_name }})"
+body_path: RELEASE_NOTES.md
+files: |
+  release_assets/*
+draft: false
+prerelease: false
+env:
+GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
