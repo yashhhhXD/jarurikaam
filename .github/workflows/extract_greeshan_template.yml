@@ -37,10 +37,9 @@ jobs:
         run: |
           mkdir -p HyperOS4_Port_By_Yash
           
-          # Extract everything EXCEPT super.img (keeps boot.img, dtbo.img, vbmeta, bin, META-INF, scripts!)
+          # Extract everything EXCEPT super.img (keeps boot, dtbo, vbmeta, bin, META-INF, scripts!)
           7z x greeshan.zip -oHyperOS4_Port_By_Yash -xr!super.img -xr!*.br -xr!*.dat
           
-          # Delete original zip to free disk space
           rm -f greeshan.zip
 
       - name: Generate Release Notes with Exact Tree & Script Codes
@@ -48,7 +47,7 @@ jobs:
           cat << 'EOF' > RELEASE_NOTES.md
           # 🚀 HyperOS 4 Port Template (Greeshan Exact Structure)
           **Ready-to-use Hybrid Flasher Template (`Fastboot` + `Recovery`).**
-          Bas is zip ke `images/` (ya `firmware-update/`) folder me apna **`super.img`** daalo aur flash karo!
+          Bas is zip ke `firmware-update/` (images) folder me apna **`super.img`** daalo aur flash karo!
 
           ## 📁 Exact Folder Structure
 ```text
@@ -59,7 +58,6 @@ echo '```' >> RELEASE_NOTES.md
 echo "" >> RELEASE_NOTES.md
 echo "## 📜 Exact Flasher & Updater Scripts Code" >> RELEASE_NOTES.md
 
-# Append every script's exact code into Release Notes AND copy individual scripts for direct release upload
 mkdir -p release_assets
 cd HyperOS4_Port_By_Yash
 
@@ -77,16 +75,16 @@ for f in $(find . -maxdepth 4 -type f \( -name "*.bat" -o -name "*.sh" -o -name 
   echo "" >> ../RELEASE_NOTES.md
 done
 
-- name: Pack Complete Flasher Template Zip (Without super.img)
+- name: Pack Complete Flasher Template Zip
 run: |
 cd HyperOS4_Port_By_Yash
 zip -r -0 ../release_assets/HyperOS4_Port_By_Yash_Flasher_Template.zip ./*
 
-- name: Upload Everything Directly to GitHub Releases
+- name: Upload Directly to GitHub Releases
 uses: softprops/action-gh-release@v2
 with:
 tag_name: ${{ github.event.inputs.tag_name }}
-name: "HyperOS 4 Port Flasher Template & Scripts (${{ github.event.inputs.tag_name }})"
+name: "HyperOS 4 Port Flasher Template (${{ github.event.inputs.tag_name }})"
 body_path: RELEASE_NOTES.md
 files: |
   release_assets/*
