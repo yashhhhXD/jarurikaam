@@ -1,0 +1,71 @@
+name: Extract Greeshan ROM Structure & Scripts
+
+on:
+  workflow_dispatch:
+    inputs:
+      rom_url:
+        description: 'SourceForge Direct/Download Link'
+        required: true
+        default: 'https://sourceforge.net/projects/miui-greeshan-repack/files/HyperOS2/Redmi-13C-air/greeshan.by_Redmi13C_5G_air_OS2.0.208.0.VGQINXM_15.0_99c03.zip/download'
+
+jobs:
+  extract-template:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Required Tools (aria2, p7zip, tree)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y aria2 p7zip-full tree
+
+      - name: Download Greeshan ROM from SourceForge
+        run: |
+          echo "Downloading ROM using aria2c multi-connection..."
+          aria2c -x 16 -s 16 -k 1M --allow-overwrite=true --follow-metalink=mem -o greeshan_rom.zip "${{ github.event.inputs.rom_url }}"
+          ls -lh greeshan_rom.zip
+
+      - name: Print Exact Full File Structure of Greeshan ROM
+        run: |
+          echo "===================================================="
+          echo "          EXACT GREESHAN ZIP FILE STRUCTURE         "
+          echo "===================================================="
+          7z l greeshan_rom.zip > FULL_ROM_STRUCTURE.txt
+          cat FULL_ROM_STRUCTURE.txt
+
+      - name: Extract Scripts, Binaries & META-INF (Skip Heavy .img/.bin)
+        run: |
+          mkdir -p Greeshan_Template
+          # Extract everything EXCEPT heavy firmware-update/images .img and .bin files
+          7z x greeshan_rom.zip -oGreeshan_Template -xr!*.img -xr!*.bin -xr!*.br -xr!*.dat
+          
+          # Create empty placeholder folders & list of images so structure stays 100% identical
+          mkdir -p Greeshan_Template/firmware-update
+          7z l greeshan_rom.zip firmware-update/ images/ > Greeshan_Template/IMAGE_FILES_LIST.txt || true
+          cp FULL_ROM_STRUCTURE.txt Greeshan_Template/
+
+      - name: Print Every Single Script Code in Logs
+        run: |
+          cd Greeshan_Template
+          echo "===================================================="
+          echo "              DIRECTORY TREE VIEW                   "
+          echo "===================================================="
+          tree -a
+          
+          for file in $(find . -maxdepth 3 -type f \( -name "*.bat" -o -name "*.sh" -o -name "update-binary" -o -name "updater-script" \)); do
+            echo ""
+            echo "####################################################"
+            echo "FILE: $file"
+            echo "####################################################"
+            cat "$file"
+            echo ""
+          done
+
+      - name: Upload Clean Template & Scripts as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Greeshan_Air_Flasher_Template
+          path: Greeshan_Template/
+          retention-days: 30
